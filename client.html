@@ -1,0 +1,87 @@
+<html>
+<script>
+  Promise.delay = time_ms => new Promise(resolve => setTimeout(resolve, time_ms));
+
+  async function main() {
+    const streamReader = async (stream, errorText, dataReceivedFunction) => {
+      try {
+        let reader = stream.getReader();
+        while (true) {
+          data = await reader.read();
+          if (data.done) {
+            break;
+          }
+          dataReceivedFunction(data.value);
+        }
+      } catch(error) {
+        console.log(errorText + ':', error);
+      }
+    };
+
+    // Text encoder and decoder
+    let encoder = new TextEncoder();
+    let decoder = new TextDecoder();
+
+    // Connect to WebTransport server
+    let transport = new WebTransport("https://127-0-0-1.local.starling.direct:4433/counter");
+    await transport.ready;
+
+    transport.closed
+      .then(() => console.log('Connection closed normally'))
+      .catch(error => console.log('Connection closed abruptly', error));
+
+    // Create client-initiated bidi stream & writer
+    let stream = await transport.createBidirectionalStream();
+    let writer = stream.writable.getWriter();
+
+    // Create client-initiated uni stream & writer
+    let uniStream = await transport.createUnidirectionalStream();
+    let uniWriter = uniStream.getWriter();
+    
+    // Create datagram writer
+    let datagramWriter = transport.datagrams.writable.getWriter();
+
+    // Display incoming datagrams, data on bidi stream, and incoming bidi & uni streams (and data on those streams)
+    streamReader(transport.datagrams.readable, 'Datagram receive error', data => {
+        console.log('Received datagram:', decoder.decode(data));
+    });
+    streamReader(stream.readable, 'Bidi stream receive error', data => {
+        console.log('Received on bidi stream:', decoder.decode(data));
+    });
+    streamReader(transport.incomingBidirectionalStreams, 'Incoming bidi stream error', stream => {
+        console.log('Received an incoming bidi stream');
+        let incomingBidiWriter = stream.writable.getWriter();
+        streamReader(stream.readable, 'Incoming bidi stream receive error', async data => {
+            let text = decoder.decode(data);
+            console.log('Received on incoming bidi stream:', text);
+            await incomingBidiWriter.write(encoder.encode(text.toUpperCase()));
+        });
+    });
+    streamReader(transport.incomingUnidirectionalStreams, 'Incoming uni stream error', stream => {
+        console.log('Received an incoming uni stream');
+        streamReader(stream, 'Incoming uni stream receive error', data => {
+            console.log('Received on incoming uni stream:', decoder.decode(data));
+        })
+    });
+
+    // Send some data on the streams we've created, wait, then send some more
+    await datagramWriter.write(encoder.encode("Datagram"))
+    await uniWriter.write(encoder.encode("Uni stream"))
+    await writer.write(encoder.encode("Bidi stream"))
+
+    await Promise.delay(1000);
+
+    await datagramWriter.write(encoder.encode("Datagram again"))
+    await uniWriter.write(encoder.encode("Uni stream again"))
+    await writer.write(encoder.encode("Bidi stream again"))
+
+    await Promise.delay(2000);
+    await writer.close();
+
+    await Promise.delay(2000);
+    await transport.close();
+  }
+
+  main();
+</script>
+</html>
