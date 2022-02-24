@@ -23,7 +23,7 @@
     let decoder = new TextDecoder();
 
     // Connect to WebTransport server
-    let transport = new WebTransport("https://127-0-0-1.local.starling.direct:4433/counter");
+    let transport = new WebTransport("https://localhost:4433/counter");
     await transport.ready;
 
     transport.closed
@@ -37,7 +37,7 @@
     // Create client-initiated uni stream & writer
     let uniStream = await transport.createUnidirectionalStream();
     let uniWriter = uniStream.getWriter();
-    
+
     // Create datagram writer
     let datagramWriter = transport.datagrams.writable.getWriter();
 
